@@ -7,11 +7,19 @@ sed -i 's/\(^SELINUX=\).*/\SELINUX=disabled/' /etc/sysconfig/selinux
 sed -i 's/\(^SELINUX=\).*/\SELINUX=disabled/' /etc/selinux/config
 reboot
 ```
-* Cài đặt nginx 
+* Cài đặt nginx phiên bản mới nhất
 ```php
-dnf -y install nginx
+yum-config-manager --enable nginx-mainline
+
+dnf install nginx
 ```
-* Cấu hình nginx 
+* Khởi động nginx
+```php
+systemctl start nginx
+
+systemctl enable nginx
+```
+* Cấu hình nginx
 ```php
 vi /etc/nginx/nginx.conf
 
@@ -20,12 +28,24 @@ vi /etc/nginx/nginx.conf
      server_name www.srv.world;
      ...
  }
- 
-```
-* Khởi động nginx và thiết lập tường lửa:
+ ```
+* Kiểm tra version hiện tại
 ```php
-systemctl enable --now nginx
+nginx -v
+```
+* Tạo và di chuyên đến thư mục sau bằng câu lệnh
+```php
+mkdir /usr/local/src/nginx && cd /usr/local/src/nginx
+```
+* Tải xuống mã nguồn nginx và giải nén
+```php
+wget http://nginx.org/download/nginx-1.21.4.tar.gz
 
+tar -xvzf nginx-1.21.4.tar.gz
+```
+
+* Thiết lập tường lửa:
+```php
 firewall-cmd --add-port=80/tcp
 
 firewall-cmd --add-service=http
@@ -146,12 +166,6 @@ dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.r
 
 dnf install https://rpms.remirepo.net/enterprise/remi-release-8.rpm
 
-#Gỡ cài đặt nginx bản cũ
-
-systemctl stop nginx
-
-dnf remove nginx
-
 #Tạo đoạn mã chỉ định kho lưu trữ nginx
 
 vi /etc/yum.repos.d/nginx.repo
@@ -172,34 +186,7 @@ enabled=0
 gpgkey=https://nginx.org/keys/nginx_signing.key
 module_hotfixes=true
 ```
-* Cài đặt nginx phiên bản mới nhất
-```php
-#Cài đặt nginx phiên bản mới nhất
 
-yum-config-manager --enable nginx-mainline
-
-dnf install nginx
-
-#Khởi động nginx
-
-systemctl start nginx
-
-systemctl enable nginx
-
-#Kiểm tra version hiện tại
-
-nginx -v
-
-#Tạo và di chuyên đến thư mục sau bằng câu lệnh
-
-mkdir /usr/local/src/nginx && cd /usr/local/src/nginx
-
-#Tải xuống mã nguồn nginx và giải nén
-
-wget http://nginx.org/download/nginx-1.21.4.tar.gz
-
-tar -xvzf nginx-1.21.4.tar.gz
-```
 * Cài đặt libmodsecurity3 cho ModSecurity
 ```php
 #Cài đặt git
