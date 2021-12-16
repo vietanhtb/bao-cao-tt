@@ -340,5 +340,64 @@ server {
 ```php
 #Truy cập thư mục sau để tùy chỉnh các modsecurity
 vi /etc/nginx/modsec/coreruleset-3.3-master/crs-setup.conf/
+```
+## 5. Hướng dẫn thiết lập Test một số các modsecurity
+* Kiểm tra chặn xss bằng cách thêm dòng script sau vào sau tên miền 
+```php
+/index.html?exec=/bin/bash
 
+#Hoặc
+
+/?q=<Script>
+
+#ví dụ:
+
+http://192.168.1.8//index.html?exec=/bin/bash
+
+```
+* Mở bảo vệ Dos và kiểm tra
+```php
+#Sửa file sau
+vi /etc/nginx/modsec/coreruleset-3.3-master/crs-setup.conf
+
+#Tìm đến dòng khoảng 705 phần Dos proction
+
+#Bỏ hết comment và chỉnh sửa như sau để có thể nhanh chóng kiểm tra
+#tx.dos_burst_time_slice=30 
+#tx.dos_counter_threshold=10
+#setvar:'tx.dos_block_timeout=60
+#khi reqquest 10 lần trong 30 giấy sẽ tính là 1 lần quá tải, khi quá tải 2 lần sẽ ban trong 60 giây(request 20 lần trong 30 giấy)
+
+"id:900500,\
+ phase:1,\
+ nolog,\
+ pass,\
+ t:none,\
+ setvar:'tx.dos_burst_time_slice=60',\  
+ setvar:'tx.dos_counter_threshold=20',\ 
+ setvar:'tx.dos_block_timeout=60'"
+
+
+#Test Dos protection bằng cách request liên tục vào trang web đến khi nào đủ giới hạn như ví dụ trên
+```
+
+* Kiểm tra SQL Injection
+```php
+#Truy cập vào trang quản trị và nhập vào ô user và password câu lệnh sql injection cơ bản như sau
+
+
+admin' or '1'='1
+
+#Hoặc
+
+admin' --
+
+
+```
+***
+## 6. Những vấn đề còn tồn tại
+
+* Sau khi chặn người dùng Dos đến máy chủ như đã thiết lập thì chưa thể bỏ chặn người dùng được, người dùng sẽ bị chặn vĩnh viễn cho đến khí restart lại nginx.
+
+* Chưa thiết lập được rewrite cho nukeviet
 
