@@ -341,6 +341,7 @@ server {
 #Truy cập thư mục sau để tùy chỉnh các modsecurity
 vi /etc/nginx/modsec/coreruleset-3.3-master/crs-setup.conf/
 ```
+***
 ## 5. Hướng dẫn thiết lập Test một số các modsecurity
 * Kiểm tra chặn xss bằng cách thêm dòng script sau vào sau tên miền 
 ```php
