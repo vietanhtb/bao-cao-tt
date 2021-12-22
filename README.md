@@ -399,6 +399,102 @@ admin' --
 ## 6. Những vấn đề còn tồn tại
 
 * Sau khi chặn người dùng Dos đến máy chủ như đã thiết lập thì chưa thể bỏ chặn người dùng được, người dùng sẽ bị chặn vĩnh viễn cho đến khí restart lại nginx.
+***
 
-* Chưa thiết lập được rewrite cho nukeviet
+## 7. Tạo server mới chứa mysql(mariadb) và thiết lập tường lửa
+
+* Setup truy cập mysql từ máy khác 
+```php
+#Cài đặt mariadb trên máy chủ mới như hướng dẫn đã có ở trên
+#truy cập vào mysql
+mysql -u root -p
+#Tạo tài khoản mới để truy cập từ xa
+create user 'va123'@'%' identified by 'vanh99tb';
+
+GRANT ALL PRIVILEGES ON *.* TO 'tai123'@'192.168.1.4' IDENTIFIED BY 'vanh99tb';
+
+FLUSH PRIVILEGES;
+#Hoặc sử dụng tài khoản root để truy cập từ xa
+
+GRANT ALL PRIVILEGES ON *.* TO 'root'@'192.168.1.4' IDENTIFIED BY 'vanh99tb' WITH GRANT OPTION;
+
+FLUSH PRIVILEGES;
+
+
+
+```
+* Sau khi cài đặt máy chứa mysql(mariadb) thì thực hiện cấu hình tường lửa như sau
+```php
+#Tạo 1 zone riêng
+
+firewall-cmd --permanent --new-zone=sqlzone
+
+firewall-cmd --reload
+
+#Kiểm tra lại các zone
+
+firewall-cmd --get-zones
+
+#Thêm những luật sau vào zone: Mở ssh, mysql, chỉ cho phép ip 192.168.1.15(ip của máy muốn truy cập) truy cập và mở cổng 3306(cổng mặc định của mysql)
+
+firewall-cmd --zone=sqlzone --add-service=mysql --permanent  
+firewall-cmd --zone=sqlzone --add-service=ssh --permanent   
+firewall-cmd --zone=sqlzone --add-source='192.168.1.4' --permanent
+firewall-cmd --zone=sqlzone --add-port=3306/tcp --permanent 
+firewall-cmd --zone=sqlzone --change-interface=ens33
+
+#Loại bỏ dịch vụ ssh trên zone public
+firewall-cmd --zone=public --remove-service=ssh
+firewall-cmd --reload
+
+#kiểm tra lại
+
+firewall-cmd --list-all-zones
+
+#Kiểm tra đã giới hạn ssh và mysql như sau
+#Sử dụng 1 máy có ip khác với ip đã thiết lập ở trên
+
+ssh username@192.168.1.9
+
+mysql -u va123 -p -h 192.168.1.9
+
+```
+* Đẩy database qua máy server mới chứa mysql(mariadb)
+```php
+#Cài đặt mariadb backup nếu chưa có
+
+dnf -y install mariadb-backup
+
+#Tạo 1 thư mục lưu trữ database backup
+
+mkdir /home/mariadb_backup
+
+#backup lại database(vietanh99tb là mật khẩu root của mariadb đã được thiết lập)
+
+mariabackup --backup --target-dir /home/mariadb_backup -u root -p tvietanh99tb
+
+#Sau đó đẩy file qua máy server mysql mới lập(với ip của máy đó)
+
+cd /home/
+
+scp -r mariadb_backup/ root@192.168.1.9:/root/mariadb_backup
+
+#Tiếp theo là thao tác trên máy server mysql(192.168.1.9)
+#Import database vừa gửi qua vào database hiện có
+
+mariabackup --prepare --target-dir /root/mariadb_backup
+
+mariabackup --copy-back --target-dir /root/mariadb_backup
+
+chown -R mysql. /var/lib/mysql
+
+systemctl restart mariadb.service
+
+#Hoàn thành việc chuyền dữ liệu
+
+#Sau đó xóa mysql(mariadb) ở máy chủ cũ đi
+
+systemctl stop mariadb
+rm -rf /var/lib/mysql/*
+```
 
