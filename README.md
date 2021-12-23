@@ -471,7 +471,7 @@ mkdir /home/mariadb_backup
 
 #backup lại database(vietanh99tb là mật khẩu root của mariadb đã được thiết lập)
 
-mariabackup --backup --target-dir /home/mariadb_backup -u root -p tvietanh99tb
+mariabackup --backup --target-dir /home/mariadb_backup -u root -p vietanh99tb
 
 #Sau đó đẩy file qua máy server mysql mới lập(với ip của máy đó)
 
