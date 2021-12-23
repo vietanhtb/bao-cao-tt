@@ -411,7 +411,7 @@ mysql -u root -p
 #Tạo tài khoản mới để truy cập từ xa
 create user 'va123'@'%' identified by 'vanh99tb';
 
-GRANT ALL PRIVILEGES ON *.* TO 'vai123'@'192.168.1.4' IDENTIFIED BY 'vanh99tb';
+GRANT ALL PRIVILEGES ON *.* TO 'tai123'@'192.168.1.4' IDENTIFIED BY 'vanh99tb';
 
 FLUSH PRIVILEGES;
 #Hoặc sử dụng tài khoản root để truy cập từ xa
