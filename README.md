@@ -1,4 +1,4 @@
-# TÀI LIỆU HƯỚNG DẪN CÀI ĐẶT VÀ CẤU HÌNH WEB SERVER BẰNG NGINX ROCKY LINUX TRÊN MÁY ẢO
+# TÀI LIỆU HƯỚNG DẪN CÀI ĐẶT, CẤU HÌNH WEB SERVER BẰNG NGINX ROCKY LINUX TRÊN MÁY ẢO. TÌM HIỂU VỀ FIREWALL CSF
 ***
 ## 1.	Cài đặt nginx
 * Tắt SELinux phòng phát sinh lỗi
@@ -411,7 +411,7 @@ mysql -u root -p
 #Tạo tài khoản mới để truy cập từ xa
 create user 'va123'@'%' identified by 'vanh99tb';
 
-GRANT ALL PRIVILEGES ON *.* TO 'tai123'@'192.168.1.4' IDENTIFIED BY 'vanh99tb';
+GRANT ALL PRIVILEGES ON *.* TO 'va123'@'192.168.1.4' IDENTIFIED BY 'vanh99tb';
 
 FLUSH PRIVILEGES;
 #Hoặc sử dụng tài khoản root để truy cập từ xa
@@ -497,4 +497,99 @@ systemctl restart mariadb.service
 systemctl stop mariadb
 rm -rf /var/lib/mysql/*
 ```
+***
+## 8. Tìm hiểu về Firewall CSF
+
+
+ * Cách cài đặt Firewall CSF
+ ```php
+ #Dừng và vô hiệu hóa tường lửa.
+
+ systemctl disable firewalld 
+ systemctl stop firewalld
+
+ #Sau khi đã dừng và vô hiệu hoá Firewalld chúng ta tiến hành cài đặt ibtables và tạo tập tin cần thiết bởi iptables
+
+ yum -y install iptables-services
+ touch /etc/sysconfig/iptables 
+ touch /etc/sysconfig/iptables6
+
+ #Khởi động iptacbles và Kích hoạt iptables mỗi khi khởi động lại VPS/Server.
+
+ systemctl start iptables 
+ systemctl start ip6tables
+ systemctl enable iptables 
+ systemctl enable ip6tables
+
+ #Các bạn tiến hành cài đặt các thư viện cần thiết cho việc hoạt động của CSF
+
+ yum -y install wget perl unzip net-tools perl-libwww-perl perl-LWP-Protocol-https perl-GDGraph
+
+ #Cài đặt CSF Firewall
+
+ cd /tmp
+ wget https://download.configserver.com/csf.tgz 
+ tar -xzf csf.tgz 
+ cd csf 
+ sh install.sh
+
+#Sau khi cài đặt các bạn chỉnh sửa lại file cấu hình csf.conf thay đổi giá trị TESTING = "1" thành TESTING = "0"
+
+vi /etc/csf/csf.conf
+
+#Restart lại service CSF
+
+csf -r
+
+#Lưu ý:Nếu không thực hiện được lệnh csf -r các bạn cài thêm gói perl 
+
+yum install perl -y
+```
+
+* CSF Open Port (Mở Port) và giới hạn kết nối
+```php
+#Cho phép user truy cập tới (incoming) các TCP port trên server
+
+TCP_IN = "20,21,22,25,53,80,110,143,443,465,587,993,995,2222,35000:35999"
+
+#Cho phép server kết nối ra ngoài Internet các port chỉ định
+TCP_OUT = "20,21,22,25,53,80,110,113,443" 
+
+#Cho phép server kết nối ra tất cả các port ở bên ngoài 
+TCP_OUT = "1:65535" Internet.
+
+# Chỉ cho phép client kết nối vào các port UDP chỉ định trên server.
+UDP_IN = "20,21,53" 
+
+# Không cho phép client kết nối bất kỳ port UDP nào trên server
+UDP_IN = "" 
+
+# Cho phép Server kết nối ra ngoài Internet các port chỉ định
+UDP_OUT = "20,21,53,113,123" 
+
+# Cho phép server kết nối ra tất cả các port ở bên ngoài Internet
+UDP_OUT = "1:65535" 
+
+#Cho phép client bên ngoài Internet ping đến server:
+ICMP_IN = 1
+
+#Không cho phép ping đến server:
+ICMP_IN = 0
+
+#Sau đó restart lại csf 
+csf -r
+
+#Giới hạn số lượng kết nối
+port;limit
+```
+ * Thay đổi port/IP của gói tin
+ ```php
+ nat tables  
+ipt_DNAT iptables module
+ipt_SNAT iptables module
+ipt_REDIRECT iptables module
+```
+
+
+
 
