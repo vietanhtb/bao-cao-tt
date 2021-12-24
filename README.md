@@ -589,6 +589,30 @@ ipt_DNAT iptables module
 ipt_SNAT iptables module
 ipt_REDIRECT iptables module
 ```
+* Một số lệnh cơ bản trong trong tường lửa CSF
+```php
+#Stop CSF	
+csf -s
+#Disable csf
+csf -f
+#Restart CSF	
+csf -r
+#Check csf status
+csf -l
+#Allow an IP	
+csf -a ip-address
+#Deny IP	
+csf -d ip-address
+#Bỏ chặn ip
+csf -dr ip-address
+#Remove and unblock all entries	
+csf -df
+#Stop firewall	
+csf -x
+#Enable firewall	
+csf -e
+```
+
 
 
 
