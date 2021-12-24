@@ -533,6 +533,11 @@ rm -rf /var/lib/mysql/*
  cd csf 
  sh install.sh
 
+ #Sau khi cài đặt hoàn tất, xóa các file cài đặt
+
+ rm -rf /tmp/csf
+ rm -f /tmp/csf.tgz 
+
 #Sau khi cài đặt các bạn chỉnh sửa lại file cấu hình csf.conf thay đổi giá trị TESTING = "1" thành TESTING = "0"
 
 vi /etc/csf/csf.conf
