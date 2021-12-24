@@ -496,8 +496,22 @@ systemctl restart mariadb.service
 
 systemctl stop mariadb
 rm -rf /var/lib/mysql/*
-```
+
+#Backup xuất file .sql
+
+mysqldump --all-databases --user=root --password > /root/testbackup.sql
+
+#Đẩy file qua server mysql mới
+cd /root/
+
+scp -r testbackup.sql/ root@192.168.1.9:/root/testbackup.sql
+
+#Import file sql vào trong mariadb
+
+cd /root/
+mysql -u root -p < /root/testbackup.sql
 ***
+```
 ## 8. Tìm hiểu về Firewall CSF
 
 
