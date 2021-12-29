@@ -490,14 +490,13 @@ admin' --
 
 
 ```
-***
 ## 6. Những vấn đề còn tồn tại
-
-* Sau khi chặn người dùng Dos đến máy chủ như đã thiết lập thì chưa thể bỏ chặn người dùng được, người dùng sẽ bị chặn vĩnh viễn cho đến khí restart lại nginx.
 ***
+* Sau khi chặn người dùng Dos đến máy chủ như đã thiết lập thì chưa thể bỏ chặn người dùng được, người dùng sẽ bị chặn vĩnh viễn cho đến khí restart lại nginx.
+
 
 ## 7. Tạo server mới chứa mysql(mariadb) và thiết lập tường lửa
-
+***
 * Setup truy cập mysql từ máy khác 
 ```php
 #Cài đặt mariadb trên máy chủ mới như hướng dẫn đã có ở trên
@@ -608,7 +607,7 @@ mysql -u root -p < /root/testbackup.sql
 ***
 ```
 ## 8. Tìm hiểu về Firewall CSF
-
+***
 
  * Cách cài đặt Firewall CSF
  ```php
@@ -738,4 +737,98 @@ vi /etc/csf/csf.deny
 tcp|in|d=22|s=192.168.1.12
 ```
 
+## 9. Xây dựng mô hình Replication Slave đồng bộ database từ máy master qua máy slave
+***
+* Chỉnh sửa bên máy master
+```php
+#Chỉnh sửa file sau
+vi /etc/my.cnf.d/mariadb-server.cnf
 
+#add vào dưới [mysqld]
+  server-id=10
+  log-bin=master
+  binlog-format=row
+  binlog-do-db=baocaott
+
+#restart lại mariadb
+systemctl restart mariadb
+
+#Đăng nhập vào mariadb
+mysql -u root -p
+
+#Tạo csdl có tên baocaott
+create database baocoatt;
+
+#Tạo user cho slave
+grant replication slave on *.* to repl_user@'%' identified by 'vietanh99tb'; 
+stop slave;
+flush privileges; 
+exit;
+
+#Tiến hành backup CSDL trên master server và chuyển nó đến slave server.
+mysqldump --all-databases --user=root --password --master-data > reply.sql
+
+#Chuyển file backup qua bên máy slave
+scp masterdatabase.sql root@192.168.1.11:/root/reply.sql
+
+#Đăng nhập vào MariaDB với root user và thực hiện unlock table bằng lệnh:
+UNLOCK TABLES;
+
+#Sử dụng câu lệnh dưới để kiểm tra trạng thái của master.
+show master status;
+```
+* Chỉnh sửa bên máy slave
+```php
+#Chỉnh sửa file sau
+vi /etc/my.cnf.d/mariadb-server.cnf
+
+#Chỉnh sửa vào dưới [mysql]
+
+log-bin=master
+binlog-do-db=baocaott
+# define server ID (Set ID duy nhất không trùng với master và các slave khác nếu có)
+server-id=11
+# read only yes
+read_only=1
+# define own hostname
+report-host=192.168.1.10
+
+#Import CSDL master
+mysql -u root -p < /root/reply.sql
+
+#Restart MariaDB service để tiếp nhận thay đổi.
+systemctl restart mariadb
+
+#Sử dụng root user đăng nhập vào MariaDB Server.
+mysql -u root -p
+
+#Hướng dẫn Slave tìm file Master Log file và Start Slave.
+STOP SLAVE;
+CHANGE MASTER TO MASTER_HOST='192.168.1.10', MASTER_USER='slave_user', MASTER_PASSWORD='vietanh99tb', MASTER_LOG_FILE='master.000002', MASTER_LOG_POS=943;
+START SLAVE;
+show slave status\G;
+```
+
+* Kiểm tra
+```php
+# Tạo bảng
+create table test_database.test_table (id int, name varchar(50), address varchar(50), primary key (id)); 
+Query OK, 0 rows affected (0.108 sec)
+
+# Thêm dữ liệu
+insert into test_database.test_table(id, name, address) values("001", "Rocky Linux", "Hiroshima"); 
+Query OK, 1 row affected (0.036 sec)
+
+# kiểm tra bảng
+select * from test_database.test_table; 
++----+-------------+-----------+
+| id | name        | address   |
++----+-------------+-----------+
+|  1 | Rocky Linux | Hiroshima |
++----+-------------+-----------+
+
+
+#Sau đó qua bên máy slave kiểm tra 
+select * from test_database.test_table; 
+#Nếu hiện đúng dữ liệu bảng vừa tạo thì đã thành công
+```
