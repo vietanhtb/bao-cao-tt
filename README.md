@@ -782,7 +782,7 @@ show master status;
 #Chỉnh sửa file sau
 vi /etc/my.cnf.d/mariadb-server.cnf
 
-#Chỉnh sửa vào dưới [mysql]
+#Chỉnh sửa vào dưới [mysqld]
 
 log-bin=master
 binlog-do-db=baocaott
@@ -804,7 +804,7 @@ mysql -u root -p
 
 #Hướng dẫn Slave tìm file Master Log file và Start Slave.
 STOP SLAVE;
-CHANGE MASTER TO MASTER_HOST='192.168.1.10', MASTER_USER='slave_user', MASTER_PASSWORD='vietanh99tb', MASTER_LOG_FILE='master.000002', MASTER_LOG_POS=943;
+CHANGE MASTER TO MASTER_HOST='192.168.1.10', MASTER_USER='repl_user', MASTER_PASSWORD='vietanh99tb', MASTER_LOG_FILE='master.000002', MASTER_LOG_POS=943;
 START SLAVE;
 show slave status\G;
 ```
@@ -819,7 +819,7 @@ Query OK, 0 rows affected (0.108 sec)
 insert into test_database.test_table(id, name, address) values("001", "Rocky Linux", "Hiroshima"); 
 Query OK, 1 row affected (0.036 sec)
 
-# kiểm tra bảng
+# Kiểm tra bảng
 select * from test_database.test_table; 
 +----+-------------+-----------+
 | id | name        | address   |
@@ -831,4 +831,98 @@ select * from test_database.test_table;
 #Sau đó qua bên máy slave kiểm tra 
 select * from test_database.test_table; 
 #Nếu hiện đúng dữ liệu bảng vừa tạo thì đã thành công
+```
+* Xử lý Promoting a Slave to Master. Giả lập Master bị hỏng, ví dụ: hỏng ổ cứng, rút dây mạng, dừng dịch vụ, ….Chuyển node slave thành node master tạm thời
+```php
+#Truy cập vào file
+vi /etc/my.cnf.d/mariadb-server.cnf
+bỏ dòng read-only=1
+
+#Đăng nhập vào Slave Database và xóa cấu hình slave cũ bằng câu lệnh
+stop slave;
+reset slave all;
+exit;
+systemctl restart mysql
+
+```
+* Khi master đã được sửa chữa xong chúng ta sẽ thiết lập đưa slave về đúng vị trí của nó
+```php
+#Đầu tiên là backup lại dữ liệu và đẩy lại qua master do trong quá trình node slave làm master có thể là đã có dữ liệu được ghi thêm vào sau đó đẩy qua bên master rồi import lại rồi bắt đầu thiết lập lại vị trí của slave 
+
+vi /etc/my.cnf.d/mariadb-server.cnf
+#Thêm lại dòng read-only vào sau [mysqld]
+read-only=1
+
+#Đăng nhập lại vào mysql bên máy slave
+mysql -u root -p
+
+#Cấu hình lại slave
+CHANGE MASTER TO MASTER_HOST='192.168.1.10', MASTER_USER='repl_user', MASTER_PASSWORD='vietanh99tb', MASTER_LOG_FILE='master.000002', MASTER_LOG_POS=943;
+START SLAVE;
+
+#Kiểm tra trạng thái
+show slave status\G 
+```
+* Xử lý backup dữ liệu 1 tiếng 1 lần
+
+```php
+#Tạo thư mục lưu trữ các bản backup
+mkdir /home/mariadb_backup/
+
+#Đầu tiên tạo 1 file ở root 
+vi mysql-backup.sh
+
+#Sau đó ghi vào file đoạn code sau
+
+#!/bin/bash
+
+TODAY=`date +"%d:%b:%Y:%H:%M"`
+
+################################################################
+################## Update below values ########################
+
+DB_BACKUP_PATH='/home/mariadb_backup/'
+
+#################################################################
+
+mkdir -p ${DB_BACKUP_PATH}/Time-Backup-File-${TODAY}
+echo "Backup started for database "
+
+mariabackup --backup --target-dir ${DB_BACKUP_PATH}/Time-Backup-File-${TODAY}/backup-mysql-on-${TODAY} -u root -p vietanh99tb
+
+if [ $? -eq 0 ]; then
+echo "Database backup successfully completed"
+else
+echo "Error found during backup"
+exit 1
+fi
+
+### End of script ####
+
+#Lưu lại lại rồi thoát ra
+
+#Kiểm tra file có hoạt động không
+bash mysql-backup.sh
+
+#Truy cập vào file /home/mariadb_backup/ để kiểm tra
+cd /home/mariadb_backup/
+ls
+
+#Sử dụng crontab để thiết lập 1 tiếng chạy tools 1 lần
+crontab -e
+
+#Backup sau mỗi giờ
+0 * * * * bash /root/mysql-backup.sh
+
+#Sau đó lưu lại và thoát ra
+#Kiểm tra crontab đang hoạt động
+
+crontab -l
+
+#Muốn xóa toàn bộ setup của crontab thì sử dụng câu lệnh crontab -r
+
+#Kiểm tra thư mục /home/mariadb_backup/ sau 1 tiếng để thấy kết quả
+
+cd /home/mariadb_backup/
+
 ```
