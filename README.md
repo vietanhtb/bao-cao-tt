@@ -757,9 +757,10 @@ systemctl restart mariadb
 mysql -u root -p
 
 #Tạo csdl có tên baocaott
-create database baocoatt;
+create database baocaott;
 
-#Tạo user cho slave
+#Tạo user và gán quyền cho user đó
+create user 'repl_user'@'%' identified by 'vietanh99tb'; 
 grant replication slave on *.* to repl_user@'%' identified by 'vietanh99tb'; 
 stop slave;
 flush privileges; 
@@ -769,7 +770,7 @@ exit;
 mysqldump --all-databases --user=root --password --master-data > reply.sql
 
 #Chuyển file backup qua bên máy slave
-scp masterdatabase.sql root@192.168.1.11:/root/reply.sql
+scp reply.sql root@192.168.1.11:/root/reply.sql
 
 #Đăng nhập vào MariaDB với root user và thực hiện unlock table bằng lệnh:
 UNLOCK TABLES;
@@ -924,5 +925,244 @@ crontab -l
 #Kiểm tra thư mục /home/mariadb_backup/ sau 1 tiếng để thấy kết quả
 
 cd /home/mariadb_backup/
+```
+***
+## 10. Mã hóa dữ liệu khi chuyển từ master qua slave
 
+* Đầu tiên tiến hành trên máy master cài đặt ssl
+```php
+yum -y install mod_sll
+```
+* Tạo chứng chỉ với OpenSSL
+```php
+#Tạo 1 thư mục lưu trữ
+mkdir -p /etc/mysql/transit/
+cd /etc/mysql/transit/
+
+#Tạo key ca
+openssl genrsa 2048 > ca-key.pem
+
+openssl req -new -x509 -nodes -days 365000 \
+      -key ca-key.pem -out ca.pem
+
+Country Name (2 letter code) [XX]:VN
+State or Province Name (full name) []:ThaiBinh
+Locality Name (eg, city) [Default City]:ThaiBinh
+Organization Name (eg, company) [Default Company Ltd]:Vinades
+Organizational Unit Name (eg, section) []:Dau Thau
+Common Name (eg, your name or your server's hostname) []:CA
+Email Address []:webmaster@vinades.vn
+
+#Tạo key cho server
+openssl req -newkey rsa:2048 -days 365000 \
+      -nodes -keyout server-key.pem -out server-req.pem
+
+#Tạo chứng chỉ
+openssl rsa -in server-key.pem -out server-key.pem
+
+#Nhập thông tin
+#Lưu ý Common Name không để trùng nhau nếu không sẽ dẫn đến lỗi
+Country Name (2 letter code) [XX]:VN
+State or Province Name (full name) []:ThaiBinh
+Locality Name (eg, city) [Default City]:ThaiBinh
+Organization Name (eg, company) [Default Company Ltd]:Vinades
+Organizational Unit Name (eg, section) []:Dau Thau
+Common Name (eg, your name or your server's hostname) []:Server
+Email Address []:webmaster@vinades.vn
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:
+An optional company name []:
+
+#Ký chứng chỉ
+openssl x509 -req -in server-req.pem -days 365000 \
+      -CA ca.pem -CAkey ca-key.pem -set_serial 01 \
+      -out server-cert.pem
+
+#Kiểm tra
+openssl verify -CAfile ca.pem server-cert.pem
+#Kết quả cài thành công sẽ hiển thị như sau
+server-cert.pem: OK
+
+```
+* Tạo key và chứng chỉ cho client
+```php
+#Tạo khóa
+openssl genrsa 2048 > client-key.pem
+
+#Tạo chứng chỉ
+openssl req -new -key client-key.pem -out client-req.pem
+
+Country Name (2 letter code) [XX]:VN
+State or Province Name (full name) []:ThaiBinh
+Locality Name (eg, city) [Default City]:ThaiBinh
+Organization Name (eg, company) [Default Company Ltd]:Vinades
+Organizational Unit Name (eg, section) []:Dau Thau
+Common Name (eg, your name or your server's hostname) []:Client
+Email Address []:pcvietanh.99@gmail.com
+
+Please enter the following 'extra' attributes
+to be sent with your certificate request
+A challenge password []:
+An optional company name []:
+
+#Ký chứng chỉ
+openssl x509 -req -in client-req.pem -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out client-cert.pem -days 3650 -sha256
+
+#Kiểm tra chứng chỉ
+openssl verify -CAfile ca.pem server-cert.pem client-cert.pem
+```
+* Bên máy slave
+```php
+#Tạo thư mục lưu trữ các chứng chỉ
+mkdir -p /etc/mysql/transit/
+```
+* Quay về master rồi chuyển các chứng chỉ qua bên slave
+```php
+scp -r /etc/mysql/transit/* root@192.168.1.11:/etc/mysql/transit/
+```
+* Tại cả máy master và máy slave thực hiện cấp quyền cho file vừa rồi như sau
+```php
+cd /etc/mysql/transit
+$ chown -R mysql:mysql *
+$ chmod 600 client-key.pem server-key.pem ca-key.pem
+```
+* Thực hiện chỉnh sửa file hệ thống của mariadb của cả master và slave
+```php
+#Chỉnh sửa file sau
+vi /etc/my.cnf.d/mariadb-server.cnf
+
+#Thêm vào dưới [mysqld]
+ssl-ca=/etc/mysql/transit/ca.pem
+ssl-cert=/etc/mysql/transit/server-cert.pem
+ssl-key=/etc/mysql/transit/server-key.pem
+
+#Khởi động lại mariadb
+systemctl restart mariadb
+```
+* Quay trở lại máy master, đăng nhập vào maridb, yêu cầu người dùng sử dụng ssl 
+```php
+#Require ssl cho user va123
+#Nếu chưa tạo user có thể tạo user riêng như sau:
+create user 'va123'@'%' identified by 'vietanh99tb';
+GRANT ALL PRIVILEGES ON *.* TO 'va123'@'192.168.1.11' IDENTIFIED BY 'vietanh99tb';
+GRANT ALL PRIVILEGES ON *.* TO 'va123'@'192.168.1.11' IDENTIFIED BY 'vietanh99tb' REQUIRE SSL;
+
+FLUSH PRIVILEGES;
+#Khởi động lại mariadb
+systemctl restart mariadb
+```
+* Máy slave kiểm tra
+```php
+mysql -u va123 -p -h 192.168.1.10 --ssl-cert client-cert.pem --ssl-key client-key.pem --ssl-ca ca.pem -e 'status'
+
+#Chú ý 2 dòng trạng thái sau nếu như ssl hiển thị tương tự như vậy là 2 máy đã kết nối với nhau có mã hóa
+Current user:           va123@192.168.1.11
+SSL:                    Cipher in use is TLS_AES_256_GCM_SHA384
+
+```
+* Tiếp tục trên máy slave chính sửa file cấu hình mariadb
+```php
+vi /etc/my.cnf.d/mariadb-server.cnf
+#Thêm vào file đoạn sau hoạc nếu đã có [client] trong file thì chỉ thêm đoạn mã ở dưới [client]
+[client]
+ssl-ca=/etc/mysql/transit/ca.pem
+ssl-cert=/etc/mysql/transit/client-cert.pem
+ssl-key=/etc/mysql/transit/client-key.pem
+
+#Sau đó đăng nhập vào mariadb và dừng slave
+STOP SLAVE;
+#Khởi động lại mariadb
+systemctl restart mariadb
+```
+* Quay lại máy master
+```php
+GRANT ALL PRIVILEGES ON *.* TO 'repl_user'@'192.168.1.11' IDENTIFIED BY 'vietanh99tb';
+
+ALTER USER repl_user@'192.168.1.11' identified by 'vietanh99tb' REQUIRE SSL;
+
+FLUSH PRIVILEGES;
+
+#Khởi động lại mariadb
+
+systemctl restart mariadb
+```
+* Quay lại máy slave
+```php
+#Kiểm tra
+mysql -u repl_user -p -h 192.168.1.10 --ssl -e 'status'
+
+#SSL hiển thị tương tự như sau là đã thành công
+Current user:           repl_user@192.168.1.11
+SSL:                    Cipher in use is TLS_AES_256_GCM_SHA384
+
+
+#Đăng nhập vào mariadb sau đó chạy đoạn code sau
+
+STOP SLAVE;
+CHANGE MASTER TO MASTER_SSL = 1, MASTER_SSL_CA = '/etc/mysql/transit/ca.pem', MASTER_SSL_CERT = '/etc/mysql/transit/client-cert.pem', MASTER_SSL_KEY = '/etc/mysql/transit/client-key.pem';
+START SLAVE;
+
+#Kiểm tra slave
+SHOW SLAVE STATUS\G
+
+Slave_IO_State: Waiting for master to send event
+    Master_Host: 192.168.1.10
+    Master_User: repl_user
+    Master_Port: 3306
+    Connect_Retry: 60
+    Master_Log_File: master.000007
+    Read_Master_Log_Pos: 339
+    Relay_Log_File: mariadb-relay-bin.000002
+    Relay_Log_Pos: 552
+    Relay_Master_Log_File:master.000007
+    Slave_IO_Running: Yes
+    Slave_SQL_Running: Yes
+    Master_SSL_Allowed: Yes
+    Master_SSL_CA_File: /etc/mysql/transit/ca.pem
+    Master_SSL_Cert: /etc/mysql/transit/client-cert.pem
+    Master_SSL_Key: /etc/mysql/transit/client-key.pem
+
+#Đã thực hiện mã hóa thành công nếu như 3 dòng trạng thái sau hiển thị tương tự
+#Slave_IO_Running: Yes
+#Slave_SQL_Running: Yes
+#Master_SSL_Allowed: Yes
+
+```
+* Tiến hành kiểm tra dữ liệu được truyền đi đã mã hóa hay chưa
+```php
+#Cài đặt gói tcpdump trên máy salve
+yum install tcpdump 
+
+#Chạy đoạn code sau trên máy salve để kiểm tra truyền dữ liệu ở cổng 3306
+tcpdump -i ens33 -s 0 -l -w - 'src port 3306 or dst port 3306' | strings
+
+#Ở máy Master insert thêm dữ liệu vào bảng test đã tạo ở bài thiết lập mô hình slave rồi sau đó quay ra kiểm tra bên máy salve
+
+#Ta thấy được dữ liệu đã được mã hóa thành công
+
+lN;0c
+F&{$
+9ho%
+H>^]
+%wa}
+pe0o@53($X
+6Xh+
+Z2+9
+(~:J
+yO5i
+:,#QUp
+l~Z{
+;HsLs
+U}#+
+:2B& c\?
+\#ugM
+]6=^
+puYo
+
+
+^C34 packets captured
+34 packets received by filter
+0 packets dropped by kernel
 ```
