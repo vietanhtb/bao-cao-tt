@@ -911,8 +911,8 @@ ls
 #Sử dụng crontab để thiết lập 1 tiếng chạy tools 1 lần
 crontab -e
 
-#Backup sau mỗi giờ
-0 * * * * bash /root/mysql-backup.sh
+#Backup 1 tiếng 1 lần
+0 */1 * * * bash /root/mysql-backup.sh
 
 #Sau đó lưu lại và thoát ra
 #Kiểm tra crontab đang hoạt động
