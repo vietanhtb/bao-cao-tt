@@ -1166,3 +1166,84 @@ puYo
 34 packets received by filter
 0 packets dropped by kernel
 ```
+***
+
+## 11. Xử lý chuyển slave thành master khi có sự cố
+* Giả sử có 1 máy master 192.168.1.10 và 2 máy slave 192.168.1.11 và 192.168.1.12
+* Khi máy 192.168.1.10 bị hỏng giải quyết để chuyển 192.168.1.11 thành master và máy còn lại vẫn là slave
+
+* Thực hiện trên máy slave 192.168.1.11
+```php
+vi /etc/my.cnf.d/mariadb-server.cnf
+# Bỏ dòng read-only =1
+# Bỏ dòng report-host=192.168.1.10
+
+#Sau đó đăng nhập vào mysql
+mysql -u root -p
+stop slave;
+reset slave all;
+exit;
+systemctl restart mariadb
+
+#backup lại sql
+mariabackup --backup --target-dir /home/mariadb_backup_2 -u root -p vietanh99tb
+#Chuyển file qua bên máy slave 192.168.1.12
+rsync -avP /home/mariadb_backup_2 root@192.168.1.12:/root/
+
+```
+
+* Qua bên máy slave1 192.168.1.12
+```php
+#trước khi thiết lập hãy xóa toàn bộ cấu hình slave
+mysql -u root -p
+stop slave;
+reset slave all;
+exit;
+systemctl restart mariadb
+
+vi /etc/my.cnf.d/mariadb-server.cnf
+# Thay đổi report-host=192.168.1.10
+report-host=192.168.1.11
+
+#Thực hiện lại các bước thiết lập slave
+systemctl stop mariadb
+rm -rf /var/lib/mysql/*
+
+#Chạy câu lệnh sau
+mariabackup --prepare --target-dir /root/mariadb_backup_2
+
+#Restore lại database
+mariabackup --copy-back --target-dir /root/mariadb_backup_2
+chown -R mysql. /var/lib/mysql
+systemctl start mariadb
+
+
+
+#Chạy câu lệnh sau
+cat /root/mariadb_backup_2/xtrabackup_binlog_info
+
+master.000002    943
+
+#Truy cập mysql
+
+mysql -u root -p
+
+#Thiết lập slave
+stop slave;
+
+change master to 
+master_host='192.168.1.11',
+master_user='repl_user',
+master_password='vietanh99tb',
+master_log_file='master.000002',
+master_log_pos=943;
+
+#Thiết lập ssl
+CHANGE MASTER TO MASTER_SSL = 1, MASTER_SSL_CA = '/etc/mysql/transit/ca.pem', MASTER_SSL_CERT = '/etc/mysql/transit/client-cert.pem', MASTER_SSL_KEY = '/etc/mysql/transit/client-key.pem';
+
+#Mở lại slave
+start slave;
+#Kiểm tra slave
+show slave status/G
+
+```
