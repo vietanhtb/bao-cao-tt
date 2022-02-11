@@ -1,9 +1,9 @@
 # TÀI LIỆU HƯỚNG DẪN CÀI ĐẶT, CẤU HÌNH WEB SERVER BẰNG NGINX ROCKY LINUX TRÊN MÁY ẢO. TÌM HIỂU VỀ FIREWALL CSF
 ***
 # Mục lục
-[1.	Cài đặt nginx](https://github.com/vietanhtb/bao-cao-tt#1c%C3%A0i-%C4%91%E1%BA%B7t-nginx()
+[1.	Cài đặt nginx](https://github.com/vietanhtb/bao-cao-tt#1c%C3%A0i-%C4%91%E1%BA%B7t-nginx)
 
-[2. Cài đặt phpmyadmin])https://github.com/vietanhtb/bao-cao-tt#2-c%C3%A0i-%C4%91%E1%BA%B7t-phpmyadmin)
+[2. Cài đặt phpmyadmin](https://github.com/vietanhtb/bao-cao-tt#2-c%C3%A0i-%C4%91%E1%BA%B7t-phpmyadmin)
 
 [3. Cài đặt nukeviet và cấu hình rewrite cho nukeviet](https://github.com/vietanhtb/bao-cao-tt#3-c%C3%A0i-%C4%91%E1%BA%B7t-nukeviet-v%C3%A0-c%E1%BA%A5u-h%C3%ACnh-rewrite-cho-nukeviet)
 
