@@ -1680,3 +1680,188 @@ grep /mnt /proc/mounts
 
 
 ```
+
+## 15. Tìm hiểu và cài đặt ELK Elasticsearch Logstash Kibana
+* Cài đặt Elasticsearch
+```php
+#Trước tiên cần đảm bảo cài đặt java:
+
+ yum install java-1.8.0-openjdk-devel -y
+
+#Thêm repo:
+
+cat > /etc/yum.repos.d/elasticsearch.repo <<EOF
+[elasticsearch-7.x]
+name=Elasticsearch repository for 7.x packages
+baseurl=https://artifacts.elastic.co/packages/7.x/yum
+gpgcheck=1
+gpgkey=https://artifacts.elastic.co/GPG-KEY-elasticsearch
+enabled=1
+autorefresh=1
+type=rpm-md
+EOF
+
+#Cài đặt Elasticsearch
+
+dnf -y install elasticsearch
+
+#Kích hoạt dịch vụ:
+
+systemctl enable elasticsearch.service
+systemctl start elasticsearch.service
+
+#Mở firewall cổng 9200 cho Es nếu cần
+
+firewall-cmd --permanent --add-port=9200/tcp
+firewall-cmd --permanent --add-port=9300/tcp
+firewall-cmd --reload
+
+#Kiểm tra: 
+curl -XGET localhost:9200
+```
+* Cài đặt Kibana
+```php
+#Cài đặt Kibana
+
+yum install kibana -y
+systemctl enable kibana
+
+#Cấu hình truy cập được từ mọi IP
+echo 'server.host: 0.0.0.0' >> /etc/kibana/kibana.yml
+
+#Kích hoạt Kibana
+systemctl start kibana
+
+#Mở firewall cổng 5601
+
+firewall-cmd --permanent --add-port=5601/tcp
+firewall-cmd --reload
+```
+* Cài đặt Logstash
+```php
+#Cài đặt logstash
+yum install logstash -y
+
+#Cấu hình input
+
+echo 'input {
+  beats {
+    host => "0.0.0.0"
+    port => 5044
+  }
+}' > /etc/logstash/conf.d/02-beats-input.conf
+
+#Cấu hình đầu ra
+
+echo 'output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    manage_template => false
+    index => "%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}"
+  }
+}' > /etc/logstash/conf.d/30-elasticsearch-output.conf
+
+#Ngoài ra nếu muốn lọc các log, định dạng lại các dòng log ở dạng dễ đọc, dễ hiểu hơn thì cấu hình: 
+
+echo 'filter {
+  if [fileset][module] == "system" {
+    if [fileset][name] == "auth" {
+      grok {
+        match => { "message" => ["%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} sshd(?:\[%{POSINT:[system][auth][pid]}\])?: %{DATA:[system][auth][ssh][event]} %{DATA:[system][auth][ssh][method]} for (invalid user )?%{DATA:[system][auth][user]} from %{IPORHOST:[system][auth][ssh][ip]} port %{NUMBER:[system][auth][ssh][port]} ssh2(: %{GREEDYDATA:[system][auth][ssh][signature]})?",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} sshd(?:\[%{POSINT:[system][auth][pid]}\])?: %{DATA:[system][auth][ssh][event]} user %{DATA:[system][auth][user]} from %{IPORHOST:[system][auth][ssh][ip]}",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} sshd(?:\[%{POSINT:[system][auth][pid]}\])?: Did not receive identification string from %{IPORHOST:[system][auth][ssh][dropped_ip]}",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} sudo(?:\[%{POSINT:[system][auth][pid]}\])?: \s*%{DATA:[system][auth][user]} :( %{DATA:[system][auth][sudo][error]} ;)? TTY=%{DATA:[system][auth][sudo][tty]} ; PWD=%{DATA:[system][auth][sudo][pwd]} ; USER=%{DATA:[system][auth][sudo][user]} ; COMMAND=%{GREEDYDATA:[system][auth][sudo][command]}",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} groupadd(?:\[%{POSINT:[system][auth][pid]}\])?: new group: name=%{DATA:system.auth.groupadd.name}, GID=%{NUMBER:system.auth.groupadd.gid}",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} useradd(?:\[%{POSINT:[system][auth][pid]}\])?: new user: name=%{DATA:[system][auth][user][add][name]}, UID=%{NUMBER:[system][auth][user][add][uid]}, GID=%{NUMBER:[system][auth][user][add][gid]}, home=%{DATA:[system][auth][user][add][home]}, shell=%{DATA:[system][auth][user][add][shell]}$",
+                  "%{SYSLOGTIMESTAMP:[system][auth][timestamp]} %{SYSLOGHOST:[system][auth][hostname]} %{DATA:[system][auth][program]}(?:\[%{POSINT:[system][auth][pid]}\])?: %{GREEDYMULTILINE:[system][auth][message]}"] }
+        pattern_definitions => {
+          "GREEDYMULTILINE"=> "(.|\n)*"
+        }
+        remove_field => "message"
+      }
+      date {
+        match => [ "[system][auth][timestamp]", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+      }
+      geoip {
+        source => "[system][auth][ssh][ip]"
+        target => "[system][auth][ssh][geoip]"
+      }
+    }
+    else if [fileset][name] == "syslog" {
+      grok {
+        match => { "message" => ["%{SYSLOGTIMESTAMP:[system][syslog][timestamp]} %{SYSLOGHOST:[system][syslog][hostname]} %{DATA:[system][syslog][program]}(?:\[%{POSINT:[system][syslog][pid]}\])?: %{GREEDYMULTILINE:[system][syslog][message]}"] }
+        pattern_definitions => { "GREEDYMULTILINE" => "(.|\n)*" }
+        remove_field => "message"
+      }
+      date {
+        match => [ "[system][syslog][timestamp]", "MMM  d HH:mm:ss", "MMM dd HH:mm:ss" ]
+      }
+    }
+  }
+}
+' > /etc/logstash/conf.d/10-syslog-filter.conf
+
+#Mở cổng 5044
+
+firewall-cmd --permanent --add-port=5044/tcp
+firewall-cmd --reload
+
+#Kích hoạt dịch vụ
+
+systemctl enable logstash
+systemctl start logstash
+```
+* Cài đăỵ filebeat
+```php
+#Cài đặt filebeat
+yum install filebeat -y
+
+#Cấu hình cài đặt cơ bản và khởi động filebeat.
+
+vi /etc/filebeat/filebeat.yml
+
+#Tại dòng 21 bỏ comment và đổi false thành true
+
+#Tìm đến Logstash output, bỏ các comment để yêu cầu filebeat gửi đến Logstash
+
+output.logstash:
+  # The Logstash hosts
+  hosts: ["localhost:5044"]
+
+#Tìm đến mục Elasticsearch output comment lại để không gửi log thẳng đến Elasticsearch
+
+#output.elasticsearch:
+  # Array of hosts to connect to.
+  # hosts: ["localhost:9200"]
+
+#Cấu hình cơ bản filebeat tiêp như sau:
+
+vi /etc/filebeat/filebeat.reference.yml
+
+#Tại dòng 15: Thiết lập các mục để thu thập dữ liệu
+
+- module: system
+  # Syslog
+    syslog:
+    enabled: true
+
+  # Authorization logs
+    auth:
+    enabled: true
+
+#filebeat có nhiều module tương ứng với loại log nó thu thập, để xem trạng thái các module này thực hiện lệnh
+filebeat modules list
+
+#Sau đó nếu muốn kích hoạt module nào thì thực hiện theo cú pháp, ví dụ kích hoạt system, apache, mysql ...
+
+filebeat modules enable system
+filebeat modules enable apache
+filebeat modules enable mysql
+
+#Kích hoạt dịch vụ filebeat
+
+systemctl enable filebeat
+systemctl start filebeat
+
+```
+
