@@ -29,6 +29,8 @@
 
 [14. Bài tập NFS server](https://github.com/vietanhtb/bao-cao-tt#14-b%C3%A0i-t%E1%BA%ADp-nfs-server)
 
+[15.Tìm hiểu và cài đặt ELK Elasticsearch Logstash Kibana](https://github.com/vietanhtb/bao-cao-tt#15-t%C3%ACm-hi%E1%BB%83u-v%C3%A0-c%C3%A0i-%C4%91%E1%BA%B7t-elk-elasticsearch-logstash-kibana)
+ 
 ## 1.	Cài đặt nginx
 * Tắt SELinux phòng phát sinh lỗi
 ```php
