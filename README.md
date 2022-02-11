@@ -1,5 +1,20 @@
 # TÀI LIỆU HƯỚNG DẪN CÀI ĐẶT, CẤU HÌNH WEB SERVER BẰNG NGINX ROCKY LINUX TRÊN MÁY ẢO. TÌM HIỂU VỀ FIREWALL CSF
 ***
+# Mục lục
+[1.	Cài đặt nginx]
+[2. Cài đặt phpmyadmin]
+[3. Cài đặt nukeviet và cấu hình rewrite cho nukeviet]
+[4. Cài đặt modsecurity]
+[5. Hướng dẫn thiết lập Test một số các modsecurity
+[6. Những vấn đề còn tồn tại]
+[7. Tạo server mới chứa mysql (mariadb) và thiết lập tường lửa]
+[8. Tìm hiểu về Firewall CSF]
+[9. Xây dựng mô hình Replication Slave đồng bộ database từ máy master qua máy slave]
+[10. Mã hóa dữ liệu khi chuyển từ master qua slave]
+[11. Xử lý chuyển slave thành master khi có sự cố]
+[12. Bài tập thiết lập cân bằng tải]
+[13. Bài tập giữ session]
+[14. Bài tập NFS server]
 ## 1.	Cài đặt nginx
 * Tắt SELinux phòng phát sinh lỗi
 ```php
@@ -495,7 +510,7 @@ admin' --
 * Sau khi chặn người dùng Dos đến máy chủ như đã thiết lập thì chưa thể bỏ chặn người dùng được, người dùng sẽ bị chặn vĩnh viễn cho đến khí restart lại nginx.
 
 
-## 7. Tạo server mới chứa mysql(mariadb) và thiết lập tường lửa
+## 7. Tạo server mới chứa mysql (mariadb) và thiết lập tường lửa
 ***
 * Setup truy cập mysql từ máy khác 
 ```php
@@ -1245,5 +1260,409 @@ CHANGE MASTER TO MASTER_SSL = 1, MASTER_SSL_CA = '/etc/mysql/transit/ca.pem', MA
 start slave;
 #Kiểm tra slave
 show slave status/G
+
+```
+
+## 12. Bài tập thiết lập cân bằng tải
+* Có 4 máy : 
+    * Máy chủ nginx Master đóng vài trò là máy cân bằng tải: 192.168.1.17
+    * Máy chủ nginx số 1: 192.168.1.18
+    * Máy chủ nginx số 2: 192.168.1.19
+    * Máy chủ nginx số 3: 192.168.1.20
+* Kịch bản lựa chọn:
+    * Ban đầu có 1 máy chủ web số 1: 192.168.1.18 và sau 1 thời gian đi vào hoạt động máy chủ đã không thể chịu nổi lượng truy cập lớn ngày càng tăng của người dùng từ đó.
+    * Do nhu cầu truy cập cao và 1 máy chủ không thể tải hết được ta sẽ phát sinh ra phải tạo thêm 1 con máy chủ nữa và 1 con cân bằng tải. Từ đó sẽ thiết lập thêm 2 máy
+        * Máy chủ nginx Master đóng vài trò là máy cân bằng tải: 192.168.1.17
+        * Máy chủ nginx số 2: 192.168.1.19
+    * Và sau 1 thời gian nữa khi lưu lượng truy cập của người dùng lại tăng lên và 2 máy chủ web không đủ để sử dụng nữa thì sẽ  phát sinh thêm máy chủ nginx số 3: 192.168.1.20
+    * Master đóng vai trò cân bằng tải:
+        * khi mà truy cập vào máy chủ mà bị đánh dấu không tốt đủ số lần thì sẽ không truy cập vào nó nữa
+
+* Đầu tiên tiến hành cài đặt nginx trên tất cả các máy chủ 
+```php
+#Tắt Selinnux
+sed -i 's/\(^SELINUX=\).*/\SELINUX=disabled/' /etc/sysconfig/selinux
+sed -i 's/\(^SELINUX=\).*/\SELINUX=disabled/' /etc/selinux/config
+#Update và upgrade
+dnf upgrade --refresh -y
+dnf update -y
+reboot
+#Cài đặt nginx 
+dnf -y install nginx
+
+#config nginx
+vi /etc/nginx/nginx.conf
+#Dòng 41 : đổi hostname(Chỉ cần trên máy master)
+server_name www.srv.world;
+
+systemctl enable --now nginx
+
+firewall-cmd --add-service=http
+
+firewall-cmd --runtime-to-permanent
+
+#Ở bên các server còn lại xóa file index.html đi và thay bằng file index html khác với nội dung như sau để dễ nhận biết các server
+rm -f /usr/share/nginx/html/index.html
+
+vi /usr/share/nginx/html/index.html
+
+<html>
+<body>
+<div style="width: 100%; font-size: 40px; font-weight: bold; text-align: center;">
+#(đặt stt theo server tương ứng)
+Đây là NGINX SERVER 1
+</div>
+</body>
+</html>
+```
+* Thiết lập cân bằng tải
+```php
+
+vi /etc/nginx/nginx.conf
+#Comment lại toàn bộ thẻ server hoặc xóa đi
+#sau đó thêm đoạn code sau vào trong thẻ http
+http {
+    ...
+    ...
+    ...
+   upstream backend {
+       server server_1;
+       server server_2;
+   }
+   server {
+        listen 80;
+        
+       location / {
+           proxy_pass http://backend;
+       }
+   }
+
+
+
+   .....
+}
+
+#Có các thuật toán sau
+#Least connected nginx sẽ tính lưu lượng truy cập và kết nối thực tế mà server đó đang phải xử lý và sẽ phân bổ request mới đến server đang phải xử lý ít request hơn. Đây là 1 thuật toán khá thực tế trong cân bằng tải và khả đúng với cái tên của nó
+#sử dụng bằng cách thêm vào trong thẻ upstream backend
+
+   upstream backend {
+       least_conn;
+       server 192.168.1.18;
+       server 192.168.1.19;
+       server 192.168.1.20;
+   }
+
+#ip_hash sử dụng hash và nó hash ip address của client sử dụng bộ 3 octet của ipv4 hoặc toàn bộ địa chỉ ipv6 để làm key mã hóa Thuật toán này đảm bảo rằng, khi hoạt động bình thường , request từ 1 client luôn luôn chỉ đến 1 server điều này khá là giúp ích cho quá trình cân bằng tải
+#sử dụng bằng cách thêm vào trong thẻ upstream backend
+
+   upstream backend {
+       ip_hash;
+       server 192.168.1.18;
+       server 192.168.1.19;
+       server 192.168.1.20;
+   }
+
+#Ramdom sẽ ngẫu nhiên các server để lựa chọn server mà request sẽ đi tới nó có thể hỗ trợ cho thuật toán Least connected và 1 số thuật toán có trả phí
+
+upstream backend {
+       random two least_conn;
+       server 192.168.1.18;
+       server 192.168.1.19;
+       server 192.168.1.20;
+   }
+
+#Như ở đây nginx chọn ra 2 server thỏa mãn thuật toán Least connected
+
+
+#Health checks
+#Sửa đổi thẻ location như sau
+location / {
+    proxy_next_upstream http_404;
+    proxy_pass http://backend;
+}
+
+#Sau khi thiết lập xong hay thử tìm 1 page mà chỉ có 1 server có và request lúc đó ta thấy được những server không có page đó(lỗi 404) sẽ bị đánh dấu là không khỏe mạnh và sẽ request thẳng qua các server khác
+
+#Fail timeout
+upstream backend {
+       random two least_conn;
+       server 192.168.1.18 max_fails=3 fail_timeout=30;
+       server 192.168.1.19 ;
+       server 192.168.1.20 ;
+   }
+#nếu trong 30s mà server upstream có 3 lần bị đánh dấu là unhealthy thì server đó sẽ bị remove khỏi danh sách server active để phân phối traffic để kiểm tra điều đó ta có thể tắt server 192.168.1.18 đi và sau 3 lần request đến và nó hiện lỗi 502 thì sau nó ta thấy nó sẽ không request đến server đó nữa
+
+#Down server
+upstream backend {
+       random two least_conn;
+       server 192.168.1.18 max_fails=3 fail_timeout=30;
+       server 192.168.1.19 down;
+       server 192.168.1.20 ;
+   }
+#Server 192.168.1.19 sẽ bị ngừng request đến. Lý do không xóa hay comment vào để xóa cấu hình thì là do nếu muốn sử dụng thuật toán ip hash thì thiết lập 1 server down thay vì xóa cấu hình sẽ đảm bảo tính toàn vẹn   
+
+#Backup server
+upstream backend {
+       random two least_conn;
+       server 192.168.1.18 max_fails=3 fail_timeout=30;
+       server 192.168.1.19 ;
+       server 192.168.1.20 backup;
+   }
+#Server 192.168.1.20 sẽ được thiết lập làm server backup có nghĩa là khi 2 server còn lại đêu không hoạt động thì server này mới được request đến
+
+#Weight Server
+#Thiết lập để ưu tiên server nào nhận được nhiều băng thông, request hơn
+
+upstream backend {
+       random two least_conn;
+       server 192.168.1.18 max_fails=3 fail_timeout=30 weight=4;
+       server 192.168.1.19 weight=2;
+       server 192.168.1.20 backup;
+   }
+#Như ở đây thì băng thông dành cho server 1 sẽ gấp đôi server 2. Nếu không thiết lập thì weight mặc định bằng 1
+
+# config sẽ có những dòng code sau đây
+
+
+http {
+    ...
+    ...
+    ...
+   upstream backend {
+       least_conn;
+       server 192.168.1.18 max_fails=3 fail_timeout=30 weight=4;
+       server 192.168.1.19 max_fails=3 fail_timeout=30 weight=2;
+       server 192.168.1.20 max_fails=3 fail_timeout=30 weight=2;
+   }
+   server {
+        listen 80;
+        
+       location / {
+           proxy_next_upstream http_404;
+           proxy_pass http://backend;
+       }
+   }
+
+
+
+   .....
+}
+```
+
+
+## 13. Bài tập giữ session
+* Giải pháp sử dụng ở đây là sử dụng Memcached
+* Cài đặt Memcached lên trên máy chủ cân bằng tải
+```php
+#Update lại OS
+dnf update -y
+reboot
+
+#Cài đặt memcached
+dnf install memcached libmemcached -y
+#Kiểm tra thông tin
+rpm -qi memcached
+
+
+
+#Cấu hình memcached như sau
+vi /etc/sysconfig/memcached
+
+PORT="11211"
+USER="memcached"
+MAXCONN="1024"
+CACHESIZE="64"
+OPTIONS=""
+
+#Cài đặt và sử dụng tường lửa csf
+dnf -y install @perl
+cd /tmp
+wget https://download.configserver.com/csf.tgz
+tar -zxvf csf.tgz
+cd csf
+./install.sh
+rm -rf /tmp/csf
+rm -f /tmp/csf.tgz
+#Tắt tường lửa mặc định và bật tường lửa CSF để sử dụng
+systemctl stop firewalld
+systemctl disable firewalld
+systemctl enable csf
+systemctl enable lfd
+systemctl start csf
+
+#Kiểm tra CSF đã hoạt động chưa
+systemctl status csf
+
+#Test iptable
+/etc/csf/csftest.pl
+
+#Kích hoạt
+vi /etc/csf/csf.conf
+
+#Tìm đến dòng có TESTING và FASTSTART và sửa giá trị như sau
+TESTING = 0
+FASTSTART = 1
+#Thi thoảng tường lửa vẫn chặn ip trong csf.alow nên chỉnh về 1 để không bị chặn
+IGNORE_ALLOW = "1"
+#Comment toàn bộ 4 dòng sau lại hoặc là xóa đi và chỉ mở cổng 80 và 43
+TCP_IN = "20,21,22,25,53,80,110,143,443,465,587,993,995"
+TCP_IN = "20,21,22,25,53,80,110,143,443,465,587,993,995,3306"
+UDP_OUT = "20,21,22,25,53,80,110,113,443"
+UDP_OUT = "20,21,22,25,53,80,110,113,443,3306"
+
+#Sửa thành
+TCP_IN = "80,43"
+TCP_IN = "80,43"
+UDP_OUT = "80,43"
+UDP_OUT = "80,43"
+
+#Mở cổng cho memcache hoạt động
+vi /etc/csf/csf.allow
+tcp|in|d=11211|s=192.168.1.18
+tcp|in|d=11211|s=192.168.1.19
+
+csf -r
+
+#Khởi động memcached
+systemctl enable memcached.service
+systemctl start memcached.service
+#Kiểm tra trạng thái
+systemctl status memcached
+
+```
+* Tại các máy server ta cài đặt như sau
+```php
+#Update lại OS
+dnf update -y
+reboot
+
+#Cài đặt 2 gói epel và remi
+dnf install epel-release -y
+dnf install https://rpms.remirepo.net/enterprise/remi-release-8.rpm -y
+
+#Cài đặt php
+dnf module enable php:remi-7.4 -y
+dnf install php-pecl-memcache php-pecl-memcached -y
+dnf install nginx php php-cli -y
+
+#Tạo file info.php để kiểm tra
+echo '<?php phpinfo(); ?>' > /usr/share/nginx/html/info.php
+
+#Cài đặt telnet
+yum install -y telnet
+
+#Kiểm tra kết nối đến với máy chủ chứa memcached
+telnet 192.168.1.17 11211
+
+tạo file test session
+
+
+code test session
+vi /usr/share/nginx/html/test.php
+<?php
+error_reporting(E_ALL | E_STRICT);
+ini_set('display_startup_errors', 1);
+ini_set('display_errors', 1);
+
+ini_set('session.save_handler', 'memcached');
+ini_set('session.save_path', '192.168.1.17:11211');
+ini_set('session.gc_maxlifetime', 1800);
+
+if (empty($_SESSION)) session_start();
+#session_start();
+
+echo 'Welcome to server 1<br />';
+
+if (isset($_SESSION['count_hit'])) {
+    $count_hit = $_SESSION['count_hit'];
+} else {
+    $count_hit = 0;
+}
+$_SESSION['count_hit'] = $count_hit + 1;
+
+echo "count_hit = " . $count_hit . "<br>";
+
+```
+## 14. Bài tập NFS server
+* Thiết lập bên phía máy chủ NFS
+```php
+#Cài đặt NFS
+dnf -y install nfs-utils
+
+#Set thư mục chia sẻ
+vi /etc/exports
+/home/nfsshare 192.168.1.0/24(rw,no_root_squash)
+
+#Tạo thư mục và khỏi động nfs
+mkdir /home/nfsshare
+systemctl enable --now rpcbind nfs-server
+
+
+#Mở cổng cho NFS hoạt động
+vi /etc/csf/csf.allow
+#Cổng cho NFS
+tcp|in|d=2049|s=192.168.1.18
+tcp|in|d=2049|s=192.168.1.19
+#Cổng cho nfsv3
+tcp|in|d=111|s=192.168.1.18
+tcp|in|d=111|s=192.168.1.19
+#Cổng cho mount
+tcp|in|d=33333|s=192.168.1.18
+tcp|in|d=33333|s=192.168.1.19
+```
+* Thiết lập bên client NFS
+```php
+#Cài đặt nfs
+dnf -y install nfs-utils
+
+#Mount nfs
+mount -t nfs 192.168.1.17:/home/nfsshare /mnt
+#Kiểm tra
+df -hT
+
+Filesystem                  Type      Size  Used Avail Use% Mounted on
+devtmpfs                    devtmpfs  374M     0  374M   0% /dev
+tmpfs                       tmpfs     392M     0  392M   0% /dev/shm
+tmpfs                       tmpfs     392M  5.6M  386M   2% /run
+tmpfs                       tmpfs     392M     0  392M   0% /sys/fs/cgroup
+/dev/mapper/rl-root         xfs        47G  2.6G   45G   6% /
+/dev/sda1                   xfs      1014M  260M  755M  26% /boot
+192.168.1.17:/home/nfsshare nfs4       47G  2.6G   45G   6% /mnt
+tmpfs                       tmpfs      79M     0   79M   0% /run/user/0
+
+#Mount nfsv3
+mount -t nfs -o vers=3 192.168.1.17:/home/nfsshare /mnt
+#Kiểm tra
+df -hT /mnt
+Filesystem                  Type  Size  Used Avail Use% Mounted on
+192.168.1.17:/home/nfsshare nfs4   47G  2.6G   45G   6% /mnt
+
+#Thiết lập auto mount
+vi /etc/fstab
+192.168.1.17:/home/nfsshare /mnt               nfs     defaults        0 0
+
+#Gán liên kết động
+dnf -y install autofs
+vi /etc/auto.master
+/-    /etc/auto.mount
+
+vi /etc/auto.mount
+/mnt   -fstype=nfs,rw  192.168.1.17:/home/nfsshare
+
+#Khởi động autofs
+systemctl enable --now autofs
+cd /mnt
+
+#Kiểm tra
+grep /mnt /proc/mounts
+
+192.168.1.17:/home/nfsshare /mnt nfs4 rw,relatime,vers=4.2,rsize=131072,wsize=131072,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.1.18,local_lock=none,addr=192.168.1.17 0 0
+/etc/auto.mount /mnt autofs rw,relatime,fd=17,pgrp=1186,timeout=300,minproto=5,maxproto=5,direct,pipe_ino=31680 0 0
+192.168.1.17:/home/nfsshare /mnt nfs4 rw,relatime,vers=4.2,rsize=131072,wsize=131072,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,clientaddr=192.168.1.18,local_lock=none,addr=192.168.1.17 0 0
+
+
+#Ta có thể tạo file ở trong mnt để kiểm tra
+
 
 ```
